@@ -1,0 +1,17 @@
+{
+  "type": "module",
+  "name": "http-server-from-scratch-nodejs",
+  "version": "1.0.0",
+  "description": "My Own NodeJs HTTP Server",
+  "main": "index.js",
+  "scripts": {
+    "echo.tcp": "node --experimental-strip-types src/echo-server.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^24.0.12"
+  }
+}
