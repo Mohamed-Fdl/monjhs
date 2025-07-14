@@ -1,17 +1,18 @@
 import * as net from "net";
+import { DynBuf, TCPConn } from "./types";
+import { ServerConfig } from "./global";
 
-const PORT = 3000;
 const server = net.createServer({ pauseOnConnect: true });
-server.listen({ port: PORT, host: "127.0.0.1" });
+server.listen(ServerConfig);
 
 server.on("connection", newConn);
+
 server.on("error", (error: Error) => {
   throw error;
 });
 
 async function newConn(socket: net.Socket): Promise<void> {
   console.log("[new connection]", socket.remoteAddress, socket.remotePort);
-
   try {
     await serveClient(socket);
   } catch (error) {
@@ -20,21 +21,6 @@ async function newConn(socket: net.Socket): Promise<void> {
     socket.destroy();
   }
 }
-
-type TCPConn = {
-  socket: net.Socket;
-  reader: null | {
-    resolve: (buffer: Buffer) => void;
-    reject: (reason: Error) => void;
-  };
-  error: null | Error;
-  ended: boolean;
-};
-
-type DynBuf = {
-  data: Buffer;
-  length: number;
-};
 
 function soInit(socket: net.Socket): TCPConn {
   const conn: TCPConn = {
@@ -156,7 +142,6 @@ function bufPush(buffer: DynBuf, data: Buffer): void {
   return;
 }
 
-// remove data from the top
 function bufPop(buffer: DynBuf, length: number): void {
   buffer.data.copyWithin(0, length, buffer.length);
   buffer.length -= length;
