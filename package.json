@@ -3,16 +3,17 @@
   "name": "http-server-from-scratch-nodejs",
   "version": "1.0.0",
   "description": "My Own NodeJs HTTP Server",
-  "main": "index.js",
+  "main": "server.ts",
   "scripts": {
-    "echo.tcp": "node --experimental-strip-types src/echo-server.ts",
-    "http.serve": "node --experimental-strip-types src/server.ts",
+    "echo.tcp": "node --import=tsx src/echo-server.ts",
+    "http.serve": "node --import=tsx src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/node": "^24.0.12"
+    "@types/node": "^24.0.12",
+    "tsx": "^4.20.3"
   }
 }
