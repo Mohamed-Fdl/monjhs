@@ -6,6 +6,7 @@
   "main": "index.js",
   "scripts": {
     "echo.tcp": "node --experimental-strip-types src/echo-server.ts",
+    "http.serve": "node --experimental-strip-types src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
