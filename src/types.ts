@@ -34,6 +34,6 @@ export type BodyReader = {
 
 export type HTTPRes = {
   code: number;
-  header: Buffer[];
+  headers: Buffer[];
   body: BodyReader;
 };
