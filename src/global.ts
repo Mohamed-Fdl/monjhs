@@ -9,13 +9,14 @@ export const ServerConfig: Server = {
 //headers limit set to 8KB as Apache servers
 export const MAX_HEADERS_LENGTH = 1024 * 8;
 
-export const HTTP_HEADER_LINE_END_CHARS = "\r\n";
-export const HTTP_HEADERS_END_CHARS = "\r\n\r\n";
+export const CRLF = "\r\n";
+export const HTTP_HEADERS_END_CHARS = `${CRLF}${CRLF}`;
 export const HTTP_REQUEST_LINE_SEPARATOR = " ";
-export const HTTP_HEADERS_END_CHARS_LENGTH = 4;
+export const HTTP_HEADERS_END_CHARS_LENGTH = HTTP_HEADERS_END_CHARS.length;
 
 export const HTTP_CONTENT_LENGTH_HEADER = "Content-Length";
 export const HTTP_TRANSFERT_ENCODING_HEADER = "Transfer-Encoding";
+// 4\r\nHTTP\r\n5\r\nserve\r\n0\r\n\r\n
 
 export const NON_ALLOWED_BODY_METHODS_LIST = [
   HttpMethods.GET,

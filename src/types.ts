@@ -37,3 +37,5 @@ export type HTTPRes = {
   headers: Buffer[];
   body: BodyReader;
 };
+
+export type BufferGenerator = AsyncGenerator<Buffer, void, void>;

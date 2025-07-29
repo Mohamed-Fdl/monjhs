@@ -1,8 +1,15 @@
 import * as net from "net";
-import { BodyReader, DynBuf, HTTPReq, HTTPRes, TCPConn } from "./types";
 import {
+  BodyReader,
+  BufferGenerator,
+  DynBuf,
+  HTTPReq,
+  HTTPRes,
+  TCPConn,
+} from "./types";
+import {
+  CRLF,
   HTTP_CONTENT_LENGTH_HEADER,
-  HTTP_HEADER_LINE_END_CHARS,
   HTTP_HEADERS_END_CHARS,
   HTTP_HEADERS_END_CHARS_LENGTH,
   HTTP_REQUEST_LINE_SEPARATOR,
@@ -98,7 +105,7 @@ function soRead(conn: TCPConn): Promise<Buffer> {
 }
 
 function soWrite(conn: TCPConn, data: Buffer): Promise<void> {
-  console.log(data.length > 0);
+  console.assert(data.length > 0);
 
   return new Promise((resolve, reject) => {
     if (conn.error) {
@@ -120,7 +127,6 @@ async function serveClient(conn: TCPConn): Promise<void> {
     const msg = cutMessages(buffer);
     if (!msg) {
       const data = await soRead(conn);
-      console.log("[data_length_received]\n", data.length, data.toString());
       bufPush(buffer, data);
       if (data.length === 0 && buffer.length === 0) {
         return;
@@ -130,6 +136,12 @@ async function serveClient(conn: TCPConn): Promise<void> {
       }
       continue;
     }
+
+    console.log(
+      "[data_length_received]\n",
+      buffer.length,
+      buffer.data.toString()
+    );
 
     const reqBody: BodyReader = readerFromReq(conn, buffer, msg);
 
@@ -214,7 +226,7 @@ function splitLines(buffer: Buffer): Buffer[] {
   return buffer
     .toString()
     .replace(HTTP_HEADERS_END_CHARS, "")
-    .split(HTTP_HEADER_LINE_END_CHARS)
+    .split(CRLF)
     .map((line) => Buffer.from(line));
 }
 
@@ -272,7 +284,7 @@ function readerFromReq(
   if (bodyLength >= 0) {
     return readerFromConnLength(conn, buffer, bodyLength);
   } else if (chunked) {
-    throw new HttpError(501, "Transfert encoding:chunked not supported yet");
+    return readerFromGenerator(readChunks(conn, buffer));
   } else {
     throw new HttpError(501, "TODO");
   }
@@ -304,6 +316,24 @@ function readerFromConnLength(
       const data = Buffer.from(buffer.data.subarray(0, consume));
       bufPop(buffer, consume);
       return data;
+    },
+  };
+}
+
+function readerFromGenerator(gen: BufferGenerator): BodyReader {
+  return {
+    length: -1,
+    read: async (): Promise<Buffer> => {
+      const { done, value } = await gen.next();
+
+      if (done) {
+        console.log("[doneeeeee]");
+        return Buffer.from("");
+      }
+
+      console.log("[returnbufferF]");
+      console.assert(value.length > 0);
+      return value;
     },
   };
 }
@@ -340,6 +370,10 @@ function handleReq(req: HTTPReq, body: BodyReader): HTTPRes {
       response = body;
       break;
 
+    case "/sheep":
+      response = readerFromGenerator(countSheep());
+      break;
+
     default:
       response = readerFromMemory(Buffer.from("hello world\n"));
       break;
@@ -347,44 +381,85 @@ function handleReq(req: HTTPReq, body: BodyReader): HTTPRes {
 
   return {
     code: 200,
-    headers: [Buffer.from("server: fdl_server,v0.1")],
+    headers: [Buffer.from("server: fdl_server:v0.1")],
     body: response,
   };
 }
 
 async function writeHTTPResp(conn: TCPConn, response: HTTPRes): Promise<void> {
   if (response.body.length < 0) {
-    throw new HttpError(501, "Transfert Encoding not implemented yet");
+    response.headers.push(Buffer.from(`Transfer-Encoding: chunked`));
+  } else {
+    response.headers.push(
+      Buffer.from(`Content-Length: ${response.body.length}`)
+    );
   }
-
-  console.assert(!fieldGet(response.headers, HTTP_CONTENT_LENGTH_HEADER));
-
-  response.headers.push(Buffer.from(`Content-Length: ${response.body.length}`));
 
   await soWrite(conn, encodeHTTPResp(response));
 
-  while (true) {
-    const data = await response.body.read();
-    if (data.length === 0) break;
+  const crlf = Buffer.from(CRLF);
+  for (let last = false; !last; ) {
+    let data = await response.body.read();
+    last = data.length === 0;
 
-    await soWrite(conn, data);
+    if (response.body.length < 0) {
+      data = Buffer.concat([
+        Buffer.from(data.length.toString(16)),
+        crlf,
+        data,
+        crlf,
+      ]);
+    }
+
+    if (data.length) {
+      await soWrite(conn, data);
+    }
   }
 }
 
 function encodeHTTPResp(response: HTTPRes): Buffer {
   const responseLine = `HTTP/1.1 ${response.code} ${
     HttpStatusCodeReasonMapper[response.code]
-  }${HTTP_HEADER_LINE_END_CHARS}`;
+  }${CRLF}`;
 
   const headers = response.headers.map((header) =>
-    Buffer.concat([header, Buffer.from(HTTP_HEADER_LINE_END_CHARS)])
+    Buffer.concat([header, Buffer.from(CRLF)])
   );
 
   const responseBuffer: Buffer[] = [
     Buffer.from(responseLine),
     ...headers,
-    Buffer.from(HTTP_HEADER_LINE_END_CHARS),
+    Buffer.from(CRLF),
   ];
 
   return Buffer.concat(responseBuffer);
+}
+
+async function* countSheep(): BufferGenerator {
+  for (let i = 0; i < 100; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    yield Buffer.from(`${i}\n`);
+  }
+}
+
+async function* readChunks(conn: TCPConn, buffer: DynBuf): BufferGenerator {
+  console.log("[buffer sting chunks]", buffer.data.toString());
+  for (let last = false; !last; ) {
+    const idx = buffer.data.subarray(0, buffer.length).indexOf(CRLF);
+    if (idx < 0) continue;
+
+    let remain = parseInt(buffer.data.subarray(0, idx).toString());
+    console.log("[remain]", remain);
+    bufPop(buffer, remain);
+    last = remain === 0;
+
+    while (remain > 0) {
+      const consume = Math.min(remain, buffer.length);
+      const data = buffer.data.subarray(0, consume);
+      bufPop(buffer, consume);
+      remain -= consume;
+      yield data;
+    }
+    bufPop(buffer, 2);
+  }
 }
