@@ -28,4 +28,7 @@ export const HttpStatusCodeReasonMapper: Record<HttpStatusCode, string> = {
   [HttpStatusCode.BAD_REQUEST]: "Bad Request",
   [HttpStatusCode.SERVER_ERROR]: "Internal Server Error",
   [HttpStatusCode.NOT_IMPLEMENTED]: "Not Implemented",
+  [HttpStatusCode.NOT_FOUND]: "Not Found",
 };
+
+export const STATIC_FILES_DIRECTOTY_PATH = "/files/";

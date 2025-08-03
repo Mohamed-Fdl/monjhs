@@ -30,6 +30,7 @@ export type HTTPReq = {
 export type BodyReader = {
   length: number;
   read: () => Promise<Buffer>;
+  close?: () => Promise<void>;
 };
 
 export type HTTPRes = {

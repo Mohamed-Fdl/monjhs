@@ -18,8 +18,11 @@ import {
   MAX_HEADERS_LENGTH,
   NON_ALLOWED_BODY_METHODS_LIST,
   ServerConfig,
+  STATIC_FILES_DIRECTOTY_PATH,
 } from "./global";
 import { HttpError } from "./utils/HttpError";
+import * as fs from "fs/promises";
+import { HttpStatusCode } from "./enums";
 
 const server = net.createServer({ pauseOnConnect: true, noDelay: true });
 server.listen(ServerConfig);
@@ -145,9 +148,13 @@ async function serveClient(conn: TCPConn): Promise<void> {
 
     const reqBody: BodyReader = readerFromReq(conn, buffer, msg);
 
-    const res: HTTPRes = handleReq(msg, reqBody);
+    const res: HTTPRes = await handleReq(msg, reqBody);
 
-    await writeHTTPResp(conn, res);
+    try {
+      await writeHTTPResp(conn, res);
+    } finally {
+      await res.body.close?.();
+    }
 
     if (msg.version === "1.0") return;
 
@@ -352,6 +359,25 @@ function readerFromMemory(buffer: Buffer): BodyReader {
   };
 }
 
+function readerFromStaticFile(fp: fs.FileHandle, size: number): BodyReader {
+  let got = 0;
+  let readCount = 0;
+  return {
+    length: size,
+    read: async (): Promise<Buffer> => {
+      const r: fs.FileReadResult<Buffer> = await fp.read();
+      got += r.bytesRead;
+      readCount++;
+
+      if (got > size || (got < size && r.bytesRead === 0)) {
+        throw new Error("Something went wrong on file reading");
+      }
+      return r.buffer.subarray(0, r.bytesRead);
+    },
+    close: async (): Promise<void> => await fp.close(),
+  };
+}
+
 function fieldGet(headers: Buffer[], key: string): null | Buffer {
   for (let i = 0; i < headers.length; i++) {
     const headerString = headers[i].toString().toLocaleLowerCase();
@@ -362,25 +388,24 @@ function fieldGet(headers: Buffer[], key: string): null | Buffer {
   return null;
 }
 
-function handleReq(req: HTTPReq, body: BodyReader): HTTPRes {
+async function handleReq(req: HTTPReq, body: BodyReader): Promise<HTTPRes> {
   let response: BodyReader;
+  const uri = req.uri.toString("utf8");
 
-  switch (req.uri.toString("latin1")) {
-    case "/echo":
-      response = body;
-      break;
-
-    case "/sheep":
-      response = readerFromGenerator(countSheep());
-      break;
-
-    default:
-      response = readerFromMemory(Buffer.from("hello world\n"));
-      break;
+  if (uri.startsWith(STATIC_FILES_DIRECTOTY_PATH)) {
+    return await serveStaticFiles(
+      uri.substring(STATIC_FILES_DIRECTOTY_PATH.length)
+    );
+  } else if (uri === "/echo") {
+    response = body;
+  } else if (uri === "/sheep") {
+    response = readerFromGenerator(countSheep());
+  } else {
+    response = readerFromMemory(Buffer.from("hello world\n"));
   }
 
   return {
-    code: 200,
+    code: HttpStatusCode.OK,
     headers: [Buffer.from("server: fdl_server:v0.1")],
     body: response,
   };
@@ -462,4 +487,39 @@ async function* readChunks(conn: TCPConn, buffer: DynBuf): BufferGenerator {
     }
     bufPop(buffer, 2);
   }
+}
+
+async function serveStaticFiles(path: string): Promise<HTTPRes> {
+  let fp: null | fs.FileHandle = null;
+  try {
+    fp = await fs.open(path, "r");
+    const stat = await fp.stat();
+
+    if (!stat.isFile()) {
+      return responseWithError(HttpStatusCode.NOT_FOUND);
+    }
+
+    const size = stat.size;
+    const reader: BodyReader = readerFromStaticFile(fp, size);
+    fp = null;
+
+    return {
+      code: HttpStatusCode.OK,
+      body: reader,
+      headers: [Buffer.from(`Content-Length: ${size}`)],
+    };
+  } catch (error) {
+    console.log("[error_serving_static_file_file_not_found]", error);
+    return responseWithError(HttpStatusCode.NOT_FOUND);
+  } finally {
+    await fp?.close();
+  }
+}
+
+function responseWithError(statusCode: HttpStatusCode): HTTPRes {
+  return {
+    code: statusCode,
+    headers: [],
+    body: readerFromMemory(Buffer.from(HttpStatusCodeReasonMapper[statusCode])),
+  };
 }
