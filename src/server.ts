@@ -501,7 +501,6 @@ async function serveStaticFiles(path: string): Promise<HTTPRes> {
 
     const size = stat.size;
     const reader: BodyReader = readerFromStaticFile(fp, size);
-    fp = null;
 
     return {
       code: HttpStatusCode.OK,
@@ -512,7 +511,7 @@ async function serveStaticFiles(path: string): Promise<HTTPRes> {
     console.log("[error_serving_static_file_file_not_found]", error);
     return responseWithError(HttpStatusCode.NOT_FOUND);
   } finally {
-    await fp?.close();
+    fp = null;
   }
 }
 
