@@ -23,6 +23,7 @@ import {
 import { HttpError } from "./utils/HttpError";
 import * as fs from "fs/promises";
 import { HttpStatusCode } from "./enums";
+import path from "path";
 
 const server = net.createServer({ pauseOnConnect: true, noDelay: true });
 server.listen(ServerConfig);
@@ -489,10 +490,13 @@ async function* readChunks(conn: TCPConn, buffer: DynBuf): BufferGenerator {
   }
 }
 
-async function serveStaticFiles(path: string): Promise<HTTPRes> {
+async function serveStaticFiles(fileName: string): Promise<HTTPRes> {
   let fp: null | fs.FileHandle = null;
   try {
-    fp = await fs.open(path, "r");
+    fp = await fs.open(
+      `${process.cwd()}/src/${STATIC_FILES_DIRECTOTY_PATH}${fileName}`,
+      "r"
+    );
     const stat = await fp.stat();
 
     if (!stat.isFile()) {
