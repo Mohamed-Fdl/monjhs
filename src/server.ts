@@ -2,13 +2,16 @@ import * as net from "net";
 import {
   BodyReader,
   BufferGenerator,
+  DirectoryElement,
   DynBuf,
   HTTPReq,
   HTTPRes,
+  ServeStaticFilesOptions,
   TCPConn,
 } from "./types";
 import {
   CRLF,
+  DIRECTORIES_INDEX_FILE,
   HTTP_CONTENT_LENGTH_HEADER,
   HTTP_HEADERS_END_CHARS,
   HTTP_HEADERS_END_CHARS_LENGTH,
@@ -21,9 +24,9 @@ import {
   STATIC_FILES_DIRECTOTY_PATH,
 } from "./global";
 import { HttpError } from "./utils/HttpError";
+import { DirectoryListing } from "./utils/DirectoryListing";
 import * as fs from "fs/promises";
 import { HttpStatusCode } from "./enums";
-import path from "path";
 
 const server = net.createServer({ pauseOnConnect: true, noDelay: true });
 server.listen(ServerConfig);
@@ -394,7 +397,7 @@ async function handleReq(req: HTTPReq, body: BodyReader): Promise<HTTPRes> {
   const uri = req.uri.toString("utf8");
 
   if (uri.startsWith(STATIC_FILES_DIRECTOTY_PATH)) {
-    return await serveStaticFiles(
+    return await serveStaticContent(
       uri.substring(STATIC_FILES_DIRECTOTY_PATH.length)
     );
   } else if (uri === "/echo") {
@@ -490,17 +493,21 @@ async function* readChunks(conn: TCPConn, buffer: DynBuf): BufferGenerator {
   }
 }
 
-async function serveStaticFiles(fileName: string): Promise<HTTPRes> {
+async function serveStaticContent(
+  fileName: string,
+  options?: ServeStaticFilesOptions
+): Promise<HTTPRes> {
   let fp: null | fs.FileHandle = null;
   try {
-    fp = await fs.open(
-      `${process.cwd()}/src/${STATIC_FILES_DIRECTOTY_PATH}${fileName}`,
-      "r"
-    );
+    const contentPath =
+      options && options.isAbsolutePath
+        ? fileName
+        : `${process.cwd()}/src${STATIC_FILES_DIRECTOTY_PATH}${fileName}`;
+    fp = await fs.open(contentPath, "r");
     const stat = await fp.stat();
 
     if (!stat.isFile()) {
-      return responseWithError(HttpStatusCode.NOT_FOUND);
+      return serveStaticDir(contentPath);
     }
 
     const size = stat.size;
@@ -516,6 +523,41 @@ async function serveStaticFiles(fileName: string): Promise<HTTPRes> {
     return responseWithError(HttpStatusCode.NOT_FOUND);
   } finally {
     fp = null;
+  }
+}
+
+async function serveStaticDir(dirPath: string): Promise<HTTPRes> {
+  try {
+    const files = await fs.readdir(dirPath);
+    if (files.includes(DIRECTORIES_INDEX_FILE)) {
+      return serveStaticContent(`${dirPath}/${DIRECTORIES_INDEX_FILE}`, {
+        isAbsolutePath: true,
+      });
+    }
+
+    const directoryListing: DirectoryElement[] = await Promise.all(
+      files.map(async (file) => {
+        const stat = await fs.stat(`${dirPath}/${file}`);
+        return {
+          fileName: file,
+          isFile: stat.isFile(),
+          size: stat.size,
+        };
+      })
+    );
+
+    const body = readerFromMemory(
+      Buffer.from(DirectoryListing(directoryListing))
+    );
+
+    return {
+      code: HttpStatusCode.OK,
+      body,
+      headers: [Buffer.from(`Content-Length: ${body.length}`)],
+    };
+  } catch (error) {
+    console.log("[error_serving_static_file_file_not_found]", error);
+    return responseWithError(HttpStatusCode.NOT_FOUND);
   }
 }
 

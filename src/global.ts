@@ -32,3 +32,5 @@ export const HttpStatusCodeReasonMapper: Record<HttpStatusCode, string> = {
 };
 
 export const STATIC_FILES_DIRECTOTY_PATH = "/files/";
+
+export const DIRECTORIES_INDEX_FILE = "index.html";

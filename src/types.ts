@@ -40,3 +40,13 @@ export type HTTPRes = {
 };
 
 export type BufferGenerator = AsyncGenerator<Buffer, void, void>;
+
+export type ServeStaticFilesOptions = {
+  isAbsolutePath: true;
+};
+
+export type DirectoryElement = {
+  fileName: string;
+  isFile: boolean;
+  size: number;
+};
